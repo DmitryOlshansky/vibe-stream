@@ -15,6 +15,7 @@ import core.time;
 import vibe.internal.interfaceproxy;
 import vibe.internal.freelistref : FreeListRef;
 
+import photon;
 
 ProxyStream createProxyStream(Stream)(Stream stream)
 	if (isStream!Stream)
@@ -369,48 +370,52 @@ auto streamOutputRange(size_t buffer_size = 256, OutputStream)(OutputStream stre
 }
 
 unittest {
-	static long writeLength(ARGS...)(ARGS args) {
-		import vibe.stream.memory;
-		auto dst = createMemoryOutputStream;
-		{
-			auto rng = streamOutputRange(dst);
-			foreach (a; args) rng.put(a);
+	runPhoton({
+		static long writeLength(ARGS...)(ARGS args) {
+			import vibe.stream.memory;
+			auto dst = createMemoryOutputStream;
+			{
+				auto rng = streamOutputRange(dst);
+				foreach (a; args) rng.put(a);
+			}
+			return dst.data.length;
 		}
-		return dst.data.length;
-	}
-	assert(writeLength("hello", ' ', "world") == "hello world".length);
-	assert(writeLength("h\u00E4llo", ' ', "world") == "h\u00E4llo world".length);
-	assert(writeLength("hello", '\u00E4', "world") == "hello\u00E4world".length);
-	assert(writeLength("h\u1000llo", '\u1000', "world") == "h\u1000llo\u1000world".length);
-	auto test = "häl";
-	assert(test.length == 4);
-	assert(writeLength(test[0], test[1], test[2], test[3]) == test.length);
+		assert(writeLength("hello", ' ', "world") == "hello world".length);
+		assert(writeLength("h\u00E4llo", ' ', "world") == "h\u00E4llo world".length);
+		assert(writeLength("hello", '\u00E4', "world") == "hello\u00E4world".length);
+		assert(writeLength("h\u1000llo", '\u1000', "world") == "h\u1000llo\u1000world".length);
+		auto test = "häl";
+		assert(test.length == 4);
+		assert(writeLength(test[0], test[1], test[2], test[3]) == test.length);
+	});
 }
 
 unittest {
-	static struct ThrowOutputStream {
-		@safe:
-		size_t write(in ubyte[] bytes, IOMode mode) @blocking { throw new Exception("Write failed."); }
-		void write(in ubyte[] bytes) @blocking { auto n = write(bytes, IOMode.all); assert(n == bytes.length); }
-		void write(in char[] bytes) @blocking { write(cast(const(ubyte)[])bytes); }
-		void flush() @blocking {}
-		void finalize() @blocking {}
-	}
-	mixin validateOutputStream!ThrowOutputStream;
+	runPhoton({
+		static struct ThrowOutputStream {
+			@safe:
+			size_t write(in ubyte[] bytes, IOMode mode) @blocking { throw new Exception("Write failed."); }
+			void write(in ubyte[] bytes) @blocking { auto n = write(bytes, IOMode.all); assert(n == bytes.length); }
+			void write(in char[] bytes) @blocking { write(cast(const(ubyte)[])bytes); }
+			void flush() @blocking {}
+			void finalize() @blocking {}
+		}
+		mixin validateOutputStream!ThrowOutputStream;
 
-	ThrowOutputStream str;
+		ThrowOutputStream str;
 
-	assertThrown!Exception(() {
-		auto r = streamOutputRange(str);
-		// too few bytes to auto-flush
-		assertNotThrown!Exception(r.put("test"));
-	} ());
+		assertThrown!Exception(() {
+			auto r = streamOutputRange(str);
+			// too few bytes to auto-flush
+			assertNotThrown!Exception(r.put("test"));
+		} ());
 
-	try {
-		auto r = streamOutputRange(str);
-		// too few bytes to auto-flush
-		assertNotThrown!Exception(r.put("test"));
-		assertThrown!Exception(r.flush());
-		assertThrown!Exception(r.flush());
-	} catch (Exception e) assert(false, "Descructor has thrown redundant exception");
+		try {
+			auto r = streamOutputRange(str);
+			// too few bytes to auto-flush
+			assertNotThrown!Exception(r.put("test"));
+			assertThrown!Exception(r.flush());
+			assertThrown!Exception(r.flush());
+		} catch (Exception e) assert(false, "Descructor has thrown redundant exception");
+	});
 }

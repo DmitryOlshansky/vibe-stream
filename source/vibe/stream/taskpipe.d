@@ -17,7 +17,7 @@ import vibe.container.ringbuffer : RingBuffer;
 import vibe.core.core;
 import vibe.core.sync;
 
-
+import photon;
 /**
 	Implements a unidirectional data pipe between two tasks.
 */
@@ -71,8 +71,8 @@ private final class TaskPipeImpl {
 	@safe:
 
 	private {
-		Mutex m_mutex;
-		InterruptibleTaskCondition m_condition;
+		TaskMutex m_mutex;
+		TaskCondition m_condition;
 		RingBuffer!ubyte m_buffer;
 		bool m_closed = false;
 		bool m_growWhenFull;
@@ -82,8 +82,8 @@ private final class TaskPipeImpl {
 	*/
 	this(bool grow_when_full = false)
 	{
-		m_mutex = new Mutex;
-		() @trusted { m_condition = new InterruptibleTaskCondition(m_mutex); } ();
+		m_mutex = new TaskMutex;
+		() @trusted { m_condition = new TaskCondition(m_mutex); } ();
 		m_buffer.capacity = 2048;
 		m_growWhenFull = grow_when_full;
 	}
@@ -212,56 +212,59 @@ private final class TaskPipeImpl {
 }
 
 unittest { // issue #1501 - deadlock in TaskPipe
-	import std.datetime : Clock, UTC;
-	import core.time : msecs;
+	runPhoton({
+		import std.datetime : Clock, UTC;
+		import core.time : msecs;
 
-	// test read after write and write after read
-	foreach (i; 0 .. 2) {
-		auto p = new TaskPipe;
-		p.bufferSize = 2048;
+		// test read after write and write after read
+		foreach (i; 0 .. 2) {
+			auto p = new TaskPipe;
+			p.bufferSize = 2048;
 
-		Task a, b;
-		a = runTask({
-			ubyte[2100] buf;
-			try {
-				if (i == 0) p.read(buf, IOMode.all);
-				else p.write(buf, IOMode.all);
-			} catch (Exception e) assert(false, e.msg);
-		});
-		b = runTask({
-			ubyte[2100] buf;
-			try {
-				if (i == 0) p.write(buf, IOMode.all);
-				else p.read(buf, IOMode.all);
-			} catch (Exception e) assert(false, e.msg);
-		});
+			Task a, b;
+			a = runTask({
+				ubyte[2100] buf;
+				try {
+					if (i == 0) p.read(buf, IOMode.all);
+					else p.write(buf, IOMode.all);
+				} catch (Exception e) assert(false, e.msg);
+			});
+			b = runTask({
+				ubyte[2100] buf;
+				try {
+					if (i == 0) p.write(buf, IOMode.all);
+					else p.read(buf, IOMode.all);
+				} catch (Exception e) assert(false, e.msg);
+			});
 
-		auto joiner = runTask({
-			try {
-				auto starttime = Clock.currTime(UTC());
-				while (a.running || b.running) {
-					if (Clock.currTime(UTC()) - starttime > 500.msecs)
-						assert(false, "TaskPipe is dead locked.");
-					yield();
-				}
-			} catch (Exception e) assert(false, e.msg);
-		});
+			auto joiner = runTask({
+				try {
+					auto starttime = Clock.currTime(UTC());
+					while (a.running || b.running) {
+						if (Clock.currTime(UTC()) - starttime > 500.msecs)
+							assert(false, "TaskPipe is dead locked.");
+						vibe.core.core.yield();
+					}
+				} catch (Exception e) assert(false, e.msg);
+			});
 
-		joiner.join();
-	}
+			joiner.join();
+		}
+	});
 }
 
 unittest { // issue #
-	auto t = runTask({
-		try {
-			auto tp = new TaskPipeImpl;
-			tp.waitForData(10.msecs);
-			exitEventLoop();
-		} catch (Exception e) assert(false, e.msg);
+	runPhoton({
+		auto t = runTask({
+			try {
+				auto tp = new TaskPipeImpl;
+				tp.waitForData(10.msecs);
+				exitEventLoop();
+			} catch (Exception e) assert(false, e.msg);
+		});
+		runTask({
+			sleepUninterruptible(500.msecs);
+			assert(!t.running, "TaskPipeImpl.waitForData didn't timeout.");
+		});
 	});
-	runTask({
-		sleepUninterruptible(500.msecs);
-		assert(!t.running, "TaskPipeImpl.waitForData didn't timeout.");
-	});
-	runEventLoop();
 }
