@@ -12,6 +12,8 @@ import vibe.core.stream;
 
 import std.exception;
 
+import photon;
+
 
 /** Creates a new multicast stream based on the given set of output streams.
 */
@@ -28,23 +30,25 @@ MulticastStream!OutputStreams createMulticastStream(OutputStreams...)
 }
 
 unittest {
-	import vibe.stream.memory : createMemoryOutputStream;
-	import std.traits : EnumMembers;
+	runPhoton({
+		import vibe.stream.memory : createMemoryOutputStream;
+		import std.traits : EnumMembers;
 
-	createMulticastStream(nullSink, nullSink);
+		createMulticastStream(nullSink, nullSink);
 
-	ubyte[] bts = [1, 2, 3, 4];
+		ubyte[] bts = [1, 2, 3, 4];
 
-	foreach (m; EnumMembers!MulticastMode) {
-		auto s1 = createMemoryOutputStream();
-		auto s2 = createMemoryOutputStream();
-		auto ms = createMulticastStream(m, s1, s2);
-		ms.write(bts[0 .. 3]);
-		ms.write(bts[3 .. 4]);
-		ms.flush();
-		assert(s1.data == bts);
-		assert(s2.data == bts);
-	}
+		foreach (m; EnumMembers!MulticastMode) {
+			auto s1 = createMemoryOutputStream();
+			auto s2 = createMemoryOutputStream();
+			auto ms = createMulticastStream(m, s1, s2);
+			ms.write(bts[0 .. 3]);
+			ms.write(bts[3 .. 4]);
+			ms.flush();
+			assert(s1.data == bts);
+			assert(s2.data == bts);
+		}
+	});
 }
 
 

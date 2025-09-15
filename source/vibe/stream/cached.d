@@ -13,6 +13,7 @@ import vibe.core.stream;
 
 import std.typecons : Flag, No, Yes;
 
+import photon;
 
 /** Creates a new `CachedStream` instance.
 
@@ -194,77 +195,83 @@ struct CachedFileStream(InputStream)
 mixin validateClosableRandomAccessStream!(CachedFileStream!InputStream);
 
 unittest { // basic random access reading
-	import vibe.stream.memory : createMemoryStream;
-	auto source = createMemoryStream([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-	auto cs = createCachedFileStream(source);
-	auto path = cs.path;
-	assert(cs.size == 10);
+	runPhoton({
+		import vibe.stream.memory : createMemoryStream;
+		auto source = createMemoryStream([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+		auto cs = createCachedFileStream(source);
+		auto path = cs.path;
+		assert(cs.size == 10);
 
-	assert(existsFile(path) && getFileInfo(path).size == 0);
+		assert(existsFile(path) && getFileInfo(path).size == 0);
 
-	void testRead(const(ubyte)[] expected)
-	{
-		auto buf = new ubyte[](expected.length);
-		cs.read(buf);
-		assert(buf[] == expected[]);
-	}
+		void testRead(const(ubyte)[] expected)
+		{
+			auto buf = new ubyte[](expected.length);
+			cs.read(buf);
+			assert(buf[] == expected[]);
+		}
 
-	testRead([1, 2]);
-	assert(getFileInfo(path).size == 2);
-	assert(cs.size == 10);
-	assert(cs.leastSize == 8);
+		testRead([1, 2]);
+		assert(getFileInfo(path).size == 2);
+		assert(cs.size == 10);
+		assert(cs.leastSize == 8);
 
-	testRead([3, 4, 5, 6, 7, 8, 9, 10]);
-	assert(getFileInfo(path).size == 10);
-	assert(cs.empty);
+		testRead([3, 4, 5, 6, 7, 8, 9, 10]);
+		assert(getFileInfo(path).size == 10);
+		assert(cs.empty);
 
-	cs.close();
-	assert(!existsFile(path));
+		cs.close();
+		assert(!existsFile(path));
+	});
 }
 
 unittest { // explicit cache file path
-	import vibe.stream.memory : createMemoryStream;
-	ubyte[] data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-	auto source = createMemoryStream(data);
-	auto path = NativePath("test-tmp-cached-file.dat");
-	auto cs = createCachedFileStream(source, path);
-	assert(existsFile(path));
-	ubyte[10] buf;
-	cs.read(buf);
-	assert(buf[] == data[]);
-	cs.close();
-	assert(existsFile(path));
-	assert(readFile(path) == data);
-	removeFile(path);
+	runPhoton({
+		import vibe.stream.memory : createMemoryStream;
+		ubyte[] data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+		auto source = createMemoryStream(data);
+		auto path = NativePath("test-tmp-cached-file.dat");
+		auto cs = createCachedFileStream(source, path);
+		assert(existsFile(path));
+		ubyte[10] buf;
+		cs.read(buf);
+		assert(buf[] == data[]);
+		cs.close();
+		assert(existsFile(path));
+		assert(readFile(path) == data);
+		removeFile(path);
+	});
 }
 
 unittest { // write operations during read
-	import vibe.stream.memory : createMemoryStream;
-	auto source = createMemoryStream([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-	auto cs = createCachedFileStream(source, Yes.writable);
-	auto path = cs.path;
-	assert(cs.size == 10);
+	runPhoton({
+		import vibe.stream.memory : createMemoryStream;
+		auto source = createMemoryStream([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+		auto cs = createCachedFileStream(source, Yes.writable);
+		auto path = cs.path;
+		assert(cs.size == 10);
 
-	assert(existsFile(path) && getFileInfo(path).size == 0);
+		assert(existsFile(path) && getFileInfo(path).size == 0);
 
-	void testRead(const(ubyte)[] expected)
-	{
-		auto buf = new ubyte[](expected.length);
-		cs.read(buf);
-		assert(buf[] == expected[]);
-	}
+		void testRead(const(ubyte)[] expected)
+		{
+			auto buf = new ubyte[](expected.length);
+			cs.read(buf);
+			assert(buf[] == expected[]);
+		}
 
-	ubyte[] bts(ubyte[] bts...) { return bts.dup; }
+		ubyte[] bts(ubyte[] bts...) { return bts.dup; }
 
-	cs.write(bts(11, 12, 13));
-	assert(cs.size == 10);
-	testRead([4, 5, 6]);
-	cs.seek(0);
-	testRead([1, 2, 3, 4, 5, 6]);
+		cs.write(bts(11, 12, 13));
+		assert(cs.size == 10);
+		testRead([4, 5, 6]);
+		cs.seek(0);
+		testRead([1, 2, 3, 4, 5, 6]);
 
-	cs.write(bts(14, 15, 16, 17, 18, 19));
-	assert(cs.size == 12);
-	cs.seek(6);
-	testRead([7, 8, 9, 10, 18, 19]);
-	cs.close();
+		cs.write(bts(14, 15, 16, 17, 18, 19));
+		assert(cs.size == 12);
+		cs.seek(6);
+		testRead([7, 8, 9, 10, 18, 19]);
+		cs.close();
+	});
 }
