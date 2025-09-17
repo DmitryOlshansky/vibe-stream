@@ -6,7 +6,7 @@ license "MIT"
 
 subPackage "tls"
 
-dependency "vibe-core-light" version="0.0.5"
+dependency "vibe-core-light" version="0.0.6"
 dependency "photon" version="0.15.0"
 dependency "vibe-container" version=">=1.2.2 <3.0.0-0"
 
